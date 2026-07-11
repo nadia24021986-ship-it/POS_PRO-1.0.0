@@ -88,6 +88,7 @@ export default function StoreRegistrationWizard({ onComplete }: { onComplete: (s
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
           },
           body: JSON.stringify({
             store_name: form.store_name,
@@ -199,4 +200,3 @@ function Field({
     </div>
   );
 }
-
