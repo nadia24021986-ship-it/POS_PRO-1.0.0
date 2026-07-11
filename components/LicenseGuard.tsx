@@ -62,6 +62,7 @@ export default function LicenseGuard({ children }: { children: ReactNode }) {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
           },
           body: JSON.stringify({ device_fingerprint: deviceFingerprint }),
         }
@@ -168,4 +169,3 @@ function LicenseExpiredScreen({ message }: { message: string | null }) {
     </div>
   );
 }
-
