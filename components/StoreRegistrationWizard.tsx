@@ -106,7 +106,7 @@ export default function StoreRegistrationWizard({ onComplete }: { onComplete: (s
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error ?? "Gagal mendaftarkan toko.");
+        throw new Error(JSON.stringify(result));
       }
 
       setTrialInfo(result.license);
