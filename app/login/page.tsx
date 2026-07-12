@@ -20,16 +20,27 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
-    setLoading(false);
-
-    if (signInError) {
+    if (signInError || !data.session) {
+      setLoading(false);
       setError("Email atau password salah.");
       return;
     }
 
-    router.push("/dashboard");
+    const { data: adminData } = await supabase
+      .from("store_admins")
+      .select("role")
+      .eq("auth_user_id", data.session.user.id)
+      .maybeSingle();
+
+    setLoading(false);
+
+    if (adminData?.role === "cashier") {
+      router.push("/dashboard/pos");
+    } else {
+      router.push("/dashboard");
+    }
   }
 
   return (
