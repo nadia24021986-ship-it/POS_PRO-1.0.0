@@ -10,6 +10,7 @@ export interface CurrentAdmin {
   id: string; // store_admins.id (bukan auth_user_id)
   store_id: string;
   full_name: string;
+  role: "admin" | "cashier";
 }
 
 export async function getCurrentAdmin(): Promise<CurrentAdmin | null> {
@@ -21,7 +22,7 @@ export async function getCurrentAdmin(): Promise<CurrentAdmin | null> {
 
   const { data } = await supabase
     .from("store_admins")
-    .select("id, store_id, full_name")
+    .select("id, store_id, full_name, role")
     .eq("auth_user_id", session.user.id)
     .maybeSingle();
 
@@ -40,4 +41,3 @@ export async function getCurrentDeviceRecordId(storeId: string): Promise<string 
 
   return data?.id ?? null;
 }
-
