@@ -3,13 +3,15 @@
 // =====================================================================
 // app/dashboard/products/page.tsx
 // Halaman CRUD produk. Data 100% dari Supabase, tidak ada dummy data.
+// Hanya bisa diakses oleh admin/owner, kasir ditolak.
 // =====================================================================
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import LicenseGuard from "@/components/LicenseGuard";
 import ProductForm, { type Product, type Category } from "@/components/ProductForm";
-import { supabase, getCurrentStoreId } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
+import { getCurrentAdmin } from "@/lib/posHelpers";
 
 export default function ProductsPage() {
   return (
@@ -35,12 +37,18 @@ function ProductsContent() {
   }, []);
 
   async function init() {
-    const id = await getCurrentStoreId();
-    if (!id) {
+    const currentAdmin = await getCurrentAdmin();
+    if (!currentAdmin) {
       router.push("/login");
       return;
     }
-    setStoreId(id);
+
+    if (currentAdmin.role === "cashier") {
+      router.push("/dashboard/pos");
+      return;
+    }
+
+    setStoreId(currentAdmin.store_id);
     await Promise.all([loadProducts(), loadCategories()]);
     setLoading(false);
   }
@@ -208,4 +216,3 @@ function ProductsContent() {
     </div>
   );
 }
-
