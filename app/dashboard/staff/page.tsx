@@ -31,24 +31,31 @@ function StaffContent() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     init();
   }, []);
 
   async function init() {
-    const currentAdmin = await getCurrentAdmin();
-    if (!currentAdmin) {
-      router.push("/login");
-      return;
-    }
-    if (currentAdmin.role === "cashier") {
-      router.push("/dashboard/pos");
-      return;
-    }
+    try {
+      const currentAdmin = await getCurrentAdmin();
+      if (!currentAdmin) {
+        router.push("/login");
+        return;
+      }
+      if (currentAdmin.role === "cashier") {
+        router.push("/dashboard/pos");
+        return;
+      }
 
-    await loadCashiers();
-    setLoading(false);
+      await loadCashiers();
+    } catch (err) {
+      console.error("Gagal memuat halaman staff:", err);
+      setLoadError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function getToken(): Promise<string | null> {
@@ -59,21 +66,33 @@ function StaffContent() {
   }
 
   async function loadCashiers() {
+    setLoadError(null);
     const token = await getToken();
-    if (!token) return;
+    if (!token) {
+      setLoadError("Sesi tidak ditemukan. Silakan login ulang.");
+      return;
+    }
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/list-cashiers`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      },
-    });
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/list-cashiers`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        },
+      });
 
-    if (response.ok) {
       const result = await response.json();
+
+      if (!response.ok) {
+        setLoadError(result.error ?? `Gagal memuat data kasir (status ${response.status}).`);
+        return;
+      }
+
       setCashiers(result.cashiers ?? []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Gagal menghubungi server.");
     }
   }
 
@@ -87,7 +106,11 @@ function StaffContent() {
 
     setSubmitting(true);
     const token = await getToken();
-    if (!token) return;
+    if (!token) {
+      setSubmitting(false);
+      setError("Sesi tidak ditemukan. Silakan login ulang.");
+      return;
+    }
 
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-cashier`, {
@@ -121,26 +144,31 @@ function StaffContent() {
     const token = await getToken();
     if (!token) return;
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-cashier`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      },
-      body: JSON.stringify({ cashier_id: cashier.id }),
-    });
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-cashier`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        },
+        body: JSON.stringify({ cashier_id: cashier.id }),
+      });
 
-    if (response.ok) {
-      loadCashiers();
-    } else {
       const result = await response.json();
-      alert(result.error ?? "Gagal menghapus kasir.");
+      if (!response.ok) {
+        alert(result.error ?? "Gagal menghapus kasir.");
+        return;
+      }
+
+      loadCashiers();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal menghubungi server.");
     }
   }
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-400">Memuat...</div>;
+    return <div className="min-h-screen flex items-center justify-center text-gray-400 bg-gray-950">Memuat...</div>;
   }
 
   return (
@@ -155,6 +183,12 @@ function StaffContent() {
             {showForm ? "Batal" : "+ Tambah"}
           </button>
         </div>
+
+        {loadError && (
+          <div className="p-3 rounded-lg bg-red-950 border border-red-800 text-sm text-red-300">
+            {loadError}
+          </div>
+        )}
 
         {showForm && (
           <section className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
@@ -195,7 +229,7 @@ function StaffContent() {
         )}
 
         <section className="space-y-2">
-          {cashiers.length === 0 ? (
+          {cashiers.length === 0 && !loadError ? (
             <p className="text-sm text-gray-500 text-center py-8">Belum ada kasir. Tambahkan kasir pertama.</p>
           ) : (
             cashiers.map((c) => (
@@ -222,4 +256,4 @@ function StaffContent() {
       </div>
     </main>
   );
-                                   }
+             }
