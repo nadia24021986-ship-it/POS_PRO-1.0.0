@@ -57,6 +57,13 @@ function DashboardContent() {
       router.push("/login");
       return;
     }
+
+    // Kasir tidak boleh lihat menu utama & laporan keuangan
+    if (currentAdmin.role === "cashier") {
+      router.push("/dashboard/pos");
+      return;
+    }
+
     setAdmin(currentAdmin);
 
     const { data: store } = await supabase
@@ -124,7 +131,6 @@ function DashboardContent() {
     setWeekTotal(week);
     setMonthTotal(month);
 
-    // Laba kotor bulan ini: total penjualan - total modal (qty * cost_price)
     const txIds = monthTx.map((t) => t.id);
     if (txIds.length === 0) {
       setMonthProfit(0);
@@ -251,6 +257,7 @@ function DashboardContent() {
   const menuItems = [
     { title: "Kasir", description: "Mulai transaksi penjualan", href: "/dashboard/pos", icon: "🛒" },
     { title: "Produk", description: "Kelola produk & kategori", href: "/dashboard/products", icon: "📦" },
+    { title: "Kelola Kasir", description: "Tambah & hapus akun kasir", href: "/dashboard/staff", icon: "👤" },
   ];
 
   if (loading) {
@@ -271,7 +278,6 @@ function DashboardContent() {
           <p className="text-sm text-gray-500">Ringkasan penjualan</p>
         </div>
 
-        {/* Ringkasan Omzet */}
         <div className="grid grid-cols-2 gap-3">
           <SummaryCard label="Omzet Hari Ini" value={formatCurrency(todayTotal)} />
           <SummaryCard label="Omzet Minggu Ini" value={formatCurrency(weekTotal)} />
@@ -279,7 +285,6 @@ function DashboardContent() {
           <SummaryCard label="Laba Kotor Bulan Ini" value={formatCurrency(monthProfit)} accent />
         </div>
 
-        {/* Grafik 7 Hari */}
         <section className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <h2 className="text-sm font-medium text-gray-300 mb-3">Penjualan 7 Hari Terakhir</h2>
           <div className="flex items-end justify-between gap-2 h-28">
@@ -295,7 +300,6 @@ function DashboardContent() {
           </div>
         </section>
 
-        {/* Produk Terlaris */}
         <section className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <h2 className="text-sm font-medium text-gray-300 mb-3">Produk Terlaris Bulan Ini</h2>
           {topProducts.length === 0 ? (
@@ -314,7 +318,6 @@ function DashboardContent() {
           )}
         </section>
 
-        {/* Stok Hampir Habis */}
         <section className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <h2 className="text-sm font-medium text-gray-300 mb-3">
             Stok Hampir Habis <span className="text-xs text-gray-600">(≤ {LOW_STOCK_THRESHOLD})</span>
@@ -335,7 +338,6 @@ function DashboardContent() {
           )}
         </section>
 
-        {/* Menu */}
         <div className="grid grid-cols-2 gap-3">
           {menuItems.map((item) => (
             <button
@@ -361,4 +363,4 @@ function SummaryCard({ label, value, accent = false }: { label: string; value: s
       <p className={`text-sm font-semibold ${accent ? "text-teal-300" : "text-gray-100"}`}>{value}</p>
     </div>
   );
-        }
+      }
