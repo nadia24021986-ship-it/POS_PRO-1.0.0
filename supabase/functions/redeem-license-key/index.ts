@@ -1,8 +1,9 @@
 // =====================================================================
 // EDGE FUNCTION: redeem-license-key
-// Dipanggil dari halaman License saat admin toko memasukkan Activation Key.
-// Mengubah license_keys.status jadi 'active' dan licenses.status jadi 'permanent'.
+// Dipanggil dari halaman /license saat pemilik toko memasukkan
+// activation key. Validasi kode, bind ke toko, perpanjang lisensi.
 // =====================================================================
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -10,7 +11,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 interface RedeemPayload {
   key_code: string;
-  device_fingerprint: string;
+  device_fingerprint?: string;
 }
 
 function corsHeaders(origin: string | null) {
@@ -21,11 +22,37 @@ function corsHeaders(origin: string | null) {
   };
 }
 
+function computeExpiry(licenseType: string, from: Date): string | null {
+  const d = new Date(from);
+  switch (licenseType) {
+    case "1_month":
+      d.setDate(d.getDate() + 30);
+      return d.toISOString();
+    case "6_month":
+      d.setDate(d.getDate() + 180);
+      return d.toISOString();
+    case "1_year":
+      d.setDate(d.getDate() + 365);
+      return d.toISOString();
+    case "permanent":
+      return null;
+    default:
+      return null;
+  }
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin");
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders(origin) });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+    });
   }
 
   const authHeader = req.headers.get("Authorization");
@@ -62,156 +89,134 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { key_code, device_fingerprint } = payload;
-  if (!key_code || !device_fingerprint) {
-    return new Response(JSON.stringify({ error: "key_code and device_fingerprint are required" }), {
+  const keyCode = payload.key_code?.trim();
+  if (!keyCode) {
+    return new Response(JSON.stringify({ error: "Kode aktivasi wajib diisi." }), {
       status: 400,
       headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
     });
   }
 
-  const { data: admin } = await supabase
+  // 1. Cari store dari admin yang login
+  const { data: storeAdmin, error: adminError } = await supabase
     .from("store_admins")
     .select("store_id")
     .eq("auth_user_id", authUserId)
     .maybeSingle();
 
-  if (!admin) {
-    return new Response(JSON.stringify({ error: "No store found for this account" }), {
-      status: 404,
-      headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
-    });
-  }
-
-  const storeId = admin.store_id;
-  const normalizedKey = key_code.trim().toUpperCase();
-
-  const { data: key } = await supabase
-    .from("license_keys")
-    .select("*")
-    .eq("key_code", normalizedKey)
-    .maybeSingle();
-
-  if (!key) {
-    return new Response(JSON.stringify({ error: "Activation Key tidak ditemukan." }), {
-      status: 404,
-      headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
-    });
-  }
-
-  if (key.status !== "unused") {
-    return new Response(JSON.stringify({ error: "Activation Key sudah digunakan atau tidak valid." }), {
-      status: 409,
-      headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
-    });
-  }
-
-  if (key.bound_store_id && key.bound_store_id !== storeId) {
-    return new Response(JSON.stringify({ error: "Activation Key ini terikat ke toko lain." }), {
+  if (adminError || !storeAdmin) {
+    return new Response(JSON.stringify({ error: "Akun tidak terhubung ke toko manapun." }), {
       status: 403,
       headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
     });
   }
 
-  const { data: device } = await supabase
-    .from("devices")
-    .select("id")
-    .eq("device_fingerprint", device_fingerprint)
-    .eq("store_id", storeId)
+  const storeId = storeAdmin.store_id;
+
+  // 2. Cari device (opsional)
+  let deviceId: string | null = null;
+  if (payload.device_fingerprint) {
+    const { data: device } = await supabase
+      .from("devices")
+      .select("id")
+      .eq("device_fingerprint", payload.device_fingerprint)
+      .eq("store_id", storeId)
+      .maybeSingle();
+    if (device) deviceId = device.id;
+  }
+
+  // 3. Cari kode lisensi yang masih unused
+  const { data: keyRow, error: keyError } = await supabase
+    .from("license_keys")
+    .select("*")
+    .eq("key_code", keyCode)
     .maybeSingle();
 
-  if (!device) {
-    return new Response(JSON.stringify({ error: "Perangkat ini belum terdaftar untuk toko Anda." }), {
+  if (keyError || !keyRow) {
+    return new Response(JSON.stringify({ error: "Kode aktivasi tidak ditemukan." }), {
       status: 404,
       headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
     });
   }
 
-  const now = new Date();
-  const expiresAt = key.expires_at
-    ? new Date(key.expires_at)
-    : new Date(now.getFullYear() + 100, now.getMonth(), now.getDate()); // "tidak pernah expired" secara praktis
+  if (keyRow.status !== "unused") {
+    return new Response(JSON.stringify({ error: "Kode aktivasi sudah digunakan atau tidak berlaku." }), {
+      status: 409,
+      headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+    });
+  }
 
-  // 1. Tandai key sebagai terpakai
-  const { error: keyUpdateError } = await supabase
+  const now = new Date();
+  const expiresAt = computeExpiry(keyRow.license_type, now);
+
+  // 4. Tandai kode sebagai active (terpakai) dan bind ke toko ini
+  const { error: updateKeyError } = await supabase
     .from("license_keys")
     .update({
       status: "active",
       bound_store_id: storeId,
-      bound_device_id: device.id,
+      bound_device_id: deviceId,
       used_at: now.toISOString(),
     })
-    .eq("id", key.id)
-    .eq("status", "unused"); // guard tambahan mencegah race condition
+    .eq("id", keyRow.id);
 
-  if (keyUpdateError) {
-    return new Response(JSON.stringify({ error: `Failed to redeem key: ${keyUpdateError.message}` }), {
+  if (updateKeyError) {
+    return new Response(JSON.stringify({ error: `Gagal memproses kode aktivasi: ${updateKeyError.message}` }), {
       status: 500,
       headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
     });
   }
 
-  // 2. Cari license existing untuk store+device ini, update jadi permanent
+  // 5. Update/insert license aktif untuk toko ini
+  const newStatus = keyRow.license_type === "permanent" ? "permanent" : "active";
+
   const { data: existingLicense } = await supabase
     .from("licenses")
     .select("id")
     .eq("store_id", storeId)
-    .eq("device_id", device.id)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-
-  let licenseId: string;
 
   if (existingLicense) {
     await supabase
       .from("licenses")
       .update({
-        status: "permanent",
-        license_key_id: key.id,
-        expires_at: expiresAt.toISOString(),
+        status: newStatus,
+        expires_at: expiresAt,
+        activated_at: now.toISOString(),
         last_verified_at: now.toISOString(),
         last_verified_online: true,
-        updated_at: now.toISOString(),
       })
       .eq("id", existingLicense.id);
-    licenseId = existingLicense.id;
   } else {
-    const { data: newLicense, error: newLicenseError } = await supabase
-      .from("licenses")
-      .insert({
-        store_id: storeId,
-        device_id: device.id,
-        license_key_id: key.id,
-        status: "permanent",
-        activated_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        last_verified_at: now.toISOString(),
-        last_verified_online: true,
-      })
-      .select()
-      .single();
-
-    if (newLicenseError || !newLicense) {
-      return new Response(JSON.stringify({ error: `Failed to create license: ${newLicenseError?.message}` }), {
-        status: 500,
-        headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
-      });
-    }
-    licenseId = newLicense.id;
+    await supabase.from("licenses").insert({
+      store_id: storeId,
+      device_id: deviceId,
+      status: newStatus,
+      activated_at: now.toISOString(),
+      expires_at: expiresAt,
+      grace_period_days: 7,
+      last_verified_at: now.toISOString(),
+      last_verified_online: true,
+    });
   }
 
+  // 6. Catat log
   await supabase.from("activation_logs").insert({
     store_id: storeId,
-    device_id: device.id,
-    license_id: licenseId,
-    action: "converted_to_permanent",
-    performed_by: userData.user.email ?? "unknown",
-    notes: `Activation Key ${normalizedKey} berhasil diredeem`,
+    device_id: deviceId,
+    action: "license_redeemed",
+    performed_by: "store_owner",
+    notes: `Kode ${keyCode} (${keyRow.license_type}) berhasil diaktifkan.`,
   });
 
   return new Response(
-    JSON.stringify({ success: true, status: "permanent", expires_at: expiresAt.toISOString() }),
+    JSON.stringify({
+      success: true,
+      license_type: keyRow.license_type,
+      expires_at: expiresAt,
+    }),
     { status: 200, headers: { ...corsHeaders(origin), "Content-Type": "application/json" } }
   );
 });
