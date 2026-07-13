@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import LicenseGuard from "@/components/LicenseGuard";
 import ReceiptModal from "@/components/ReceiptModal";
+import CashierBottomNav from "@/components/CashierBottomNav";
 import { supabase } from "@/lib/supabaseClient";
 import { getCurrentAdmin, getCurrentDeviceRecordId, type CurrentAdmin } from "@/lib/posHelpers";
 
@@ -31,6 +32,8 @@ interface CartItem {
   max_stock: number;
 }
 
+type PaymentMethod = "cash" | "qris" | "transfer" | "debit" | "dana" | "gopay" | "ovo" | "shopeepay";
+
 export default function PosPage() {
   return (
     <LicenseGuard>
@@ -47,7 +50,7 @@ function PosContent() {
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris" | "transfer" | "debit">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [customerName, setCustomerName] = useState("");
   const [discount, setDiscount] = useState(0);
   const [processing, setProcessing] = useState(false);
@@ -230,7 +233,7 @@ function PosContent() {
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-2 pb-64">
+      <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-2 pb-[22rem]">
         {filteredProducts.map((product) => (
           <button
             key={product.id}
@@ -245,8 +248,8 @@ function PosContent() {
         ))}
       </div>
 
-      {/* Cart drawer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 rounded-t-2xl max-h-[55vh] overflow-y-auto">
+      {/* Cart drawer - digeser ke atas sejauh tinggi bottom nav (h-14 = 56px) */}
+      <div className="fixed bottom-14 left-0 right-0 bg-gray-900 border-t border-gray-800 rounded-t-2xl max-h-[52vh] overflow-y-auto z-30">
         <div className="p-4">
           <p className="font-semibold mb-2">Keranjang ({cart.length})</p>
 
@@ -309,13 +312,17 @@ function PosContent() {
 
               <select
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as any)}
+                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                 className="w-full bg-gray-800 rounded-lg px-3 py-2 border border-gray-700 text-sm mb-3"
               >
                 <option value="cash">Tunai</option>
                 <option value="qris">QRIS</option>
-                <option value="transfer">Transfer</option>
+                <option value="transfer">Transfer Bank</option>
                 <option value="debit">Kartu Debit</option>
+                <option value="dana">DANA</option>
+                <option value="gopay">GoPay</option>
+                <option value="ovo">OVO</option>
+                <option value="shopeepay">ShopeePay</option>
               </select>
 
               <div className="flex justify-between text-sm mb-3">
@@ -336,7 +343,8 @@ function PosContent() {
       </div>
 
       {receipt && <ReceiptModal data={receipt} onClose={() => setReceipt(null)} />}
+
+      <CashierBottomNav />
     </div>
   );
 }
-
