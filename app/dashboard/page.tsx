@@ -259,6 +259,7 @@ function DashboardContent() {
     { title: "Produk", description: "Kelola produk & kategori", href: "/dashboard/products", icon: "📦" },
     { title: "Kelola Kasir", description: "Tambah & hapus akun kasir", href: "/dashboard/staff", icon: "👤" },
     { title: "Laporan Kasir", description: "Omzet & riwayat per kasir", href: "/dashboard/reports", icon: "📊" },
+    { title: "Pengaturan", description: "Profil toko & akun", href: "/dashboard/settings", icon: "⚙️" },
   ];
 
   if (loading) {
@@ -364,4 +365,4 @@ function SummaryCard({ label, value, accent = false }: { label: string; value: s
       <p className={`text-sm font-semibold ${accent ? "text-teal-300" : "text-gray-100"}`}>{value}</p>
     </div>
   );
-  }
+}
